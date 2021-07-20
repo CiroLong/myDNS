@@ -1,0 +1,2 @@
+# myDNS
+my dns learn
