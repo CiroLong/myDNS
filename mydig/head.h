@@ -7,6 +7,8 @@
 #include "sys/socket.h"
 #include "netinet/in.h"
 
+#define BUF_MAX_SIZE 1024
+
 #define DNS_HEADER (12) //12bytes
 #define TTL_SIZE (4)    //size of TTL
 
@@ -43,5 +45,6 @@ typedef struct Header_DNS
     u_int16_t Addition_Record_Count = 0;
 } Header_DNS;
 
-int buildRequest(u_int8_t RequestBuffer[128], char *hostname);
-ssize_t sendDnsMassage(u_int8_t RequestBuffer[128], int offset);
+int parseArgv(int argc, char *argv[]);
+int buildRequest(u_int8_t RequestBuffer[], char *hostname);
+void sendAndRecvDnsMassage(u_int8_t RequestBuffer[BUF_MAX_SIZE], int offset, u_int8_t ResponseBuffer[BUF_MAX_SIZE]);

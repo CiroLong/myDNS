@@ -14,26 +14,34 @@ u_int16_t Type_requset = TYPE_A; //1 for A, 2 for NS
 int Recursion_key = 0;           //default off,  1 for on
 
 int udp_socket; //socket id
-char *hostname; //查询的域名
+char DefaultHostname[] = "hustunique.com\0";
+char *hostname = DefaultHostname; //查询的域名
 
 int main(int argc, char *argv[])
 {
 
-    parse(argc, argv);
+    parseArgv(argc, argv);
 
-    u_int8_t RequestBuffer[128];
+    printf("a\n");
+
+    u_int8_t RequestBuffer[BUF_MAX_SIZE];
+    u_int8_t ResponseBuffer[BUF_MAX_SIZE];
     int offset;
-    offset = buildRequest(RequestBuffer, hostname);
 
-    //send to dns server
-    sendDnsMassage(RequestBuffer, offset);
+    offset = buildRequest(RequestBuffer, hostname); // 出了点小问题
 
+    printf("offset = %d\n", offset);
+
+    //send to dns server and receive the massage
+    sendAndRecvDnsMassage(RequestBuffer, offset, ResponseBuffer);
+    printf("a\n");
     //parse the response
-
+    //先打印看看
+    printf("%s", ResponseBuffer);
     return 0;
 }
 
-int parse(int argc, char *argv[])
+int parseArgv(int argc, char *argv[])
 {
     //parse the argvs
     int ch;
@@ -79,16 +87,17 @@ int parse(int argc, char *argv[])
     }
     //the last argv[optind] is host
     printf("the host is %s\n", argv[optind]);
-    hostname = argv[optind];
+    //hostname = strcat(argv[optind], "\0");
     printf("now the dnsserverip is %s\n", DnsServerIP);
+    return 0;
 }
 
-int buildRequest(u_int8_t RequestBuffer[128], char *hostname)
+int buildRequest(u_int8_t RequestBuffer[], char *hostname)
 {
     //build request
     u_int16_t twoByteBuffer;
     int offset = 0;
-    memset(RequestBuffer, 0, sizeof(RequestBuffer));
+    memset(RequestBuffer, 0, BUF_MAX_SIZE);
 
     //header
     Header_DNS header;
@@ -101,7 +110,7 @@ int buildRequest(u_int8_t RequestBuffer[128], char *hostname)
     else
         header.Code_And_Flag = htons(QUERY_FLAG | OPCODE_STANDARD_QUERY);
     header.Question_Count = 1;
-    memcpy(RequestBuffer + offset, (Header_DNS *)&header, sizeof(header));
+    memcpy(RequestBuffer + offset, (uint8_t *)&header, sizeof(header));
     offset += sizeof(header);
 
     //build question
@@ -109,7 +118,7 @@ int buildRequest(u_int8_t RequestBuffer[128], char *hostname)
     char *end = start;
     u_int8_t len = 0;
 
-    while (*end)
+    while (*end) //用于建立查询名 Name 字段 , some bug
     {
         end = start;
         while (*end && (*end != '.'))
@@ -143,7 +152,7 @@ int buildRequest(u_int8_t RequestBuffer[128], char *hostname)
     return offset;
 }
 
-ssize_t sendDnsMassage(u_int8_t RequestBuffer[128], int offset)
+void sendAndRecvDnsMassage(u_int8_t RequestBuffer[BUF_MAX_SIZE], int offset, u_int8_t ResponseBuffer[BUF_MAX_SIZE])
 {
     //create socket
     udp_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -154,10 +163,21 @@ ssize_t sendDnsMassage(u_int8_t RequestBuffer[128], int offset)
     }
     //为socket绑定参数
     struct sockaddr_in ser_addr;
+    socklen_t addr_len = sizeof(struct sockaddr_in);
     memset(&ser_addr, 0, sizeof(ser_addr));
-    ser_addr.sin_family = AF_INET;                     //IPv4
+    ser_addr.sin_family = AF_INET;                     //IPv4, AF_INET6 for IPv6
     ser_addr.sin_addr.s_addr = inet_addr(DnsServerIP); //将ip号转化为in_addr_t
     ser_addr.sin_port = htons(DNS_PORT);               //转化为网络字节序
 
-    return sendto(udp_socket, RequestBuffer, (size_t)offset, 0, (struct sockaddr *)&ser_addr, sizeof(ser_addr));
+    if (-1 == sendto(udp_socket, RequestBuffer, (size_t)offset, 0, (struct sockaddr *)&ser_addr, addr_len))
+    {
+        printf("send message error");
+        exit(0);
+    }
+
+    if (-1 == recvfrom(udp_socket, ResponseBuffer, BUF_MAX_SIZE, 0, (struct sockaddr *)&ser_addr, &addr_len))
+    {
+        printf("recvice message error");
+        exit(0);
+    }
 }
