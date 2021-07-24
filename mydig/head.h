@@ -1,3 +1,5 @@
+#pragma once
+
 #include "stdio.h"
 #include "unistd.h" //for getopt()
 #include "stdlib.h"

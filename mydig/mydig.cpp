@@ -202,6 +202,7 @@ int sendAndRecvDnsMassage(u_int8_t RequestBuffer[], int offset, u_int8_t Respons
         exit(0);
     }
 
+    close(udp_socket);
     return recvSize;
 }
 
