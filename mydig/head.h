@@ -47,4 +47,4 @@ typedef struct Header_DNS
 
 int parseArgv(int argc, char *argv[]);
 int buildRequest(u_int8_t RequestBuffer[], char *hostname);
-void sendAndRecvDnsMassage(u_int8_t RequestBuffer[BUF_MAX_SIZE], int offset, u_int8_t ResponseBuffer[BUF_MAX_SIZE]);
+int sendAndRecvDnsMassage(u_int8_t RequestBuffer[], int offset, u_int8_t ResponseBuffer[]);

@@ -29,15 +29,19 @@ int main(int argc, char *argv[])
     int offset;
 
     offset = buildRequest(RequestBuffer, hostname); // 出了点小问题
-
-    printf("offset = %d\n", offset);
-
+    printf("a\n");
     //send to dns server and receive the massage
-    sendAndRecvDnsMassage(RequestBuffer, offset, ResponseBuffer);
+    int recvsize = sendAndRecvDnsMassage(RequestBuffer, offset, ResponseBuffer);
     printf("a\n");
     //parse the response
+
     //先打印看看
-    printf("%s", ResponseBuffer);
+    printf("recvsize = %d\n", recvsize);
+
+    for (int i = 0; i < recvsize; i++)
+    {
+        printf("| %c |", ((unsigned char *)ResponseBuffer)[i]);
+    }
     return 0;
 }
 
@@ -87,7 +91,7 @@ int parseArgv(int argc, char *argv[])
     }
     //the last argv[optind] is host
     printf("the host is %s\n", argv[optind]);
-    //hostname = strcat(argv[optind], "\0");
+    hostname = strcat(argv[optind], "\0");
     printf("now the dnsserverip is %s\n", DnsServerIP);
     return 0;
 }
@@ -98,20 +102,26 @@ int buildRequest(u_int8_t RequestBuffer[], char *hostname)
     u_int16_t twoByteBuffer;
     int offset = 0;
     memset(RequestBuffer, 0, BUF_MAX_SIZE);
-
     //header
-    Header_DNS header;
+    Header_DNS *header = (Header_DNS *)malloc(sizeof(Header_DNS));
+    memset(header, 0, sizeof(Header_DNS));
     srand(time(0));
     //ID
-    header.RequestID = rand();
+    header->RequestID = rand();
     //codes and flags
     if (Recursion_key)
-        header.Code_And_Flag = htons(QUERY_FLAG | OPCODE_STANDARD_QUERY | RECURSION_DESIRED_FLAG);
+        header->Code_And_Flag = htons(QUERY_FLAG | OPCODE_STANDARD_QUERY | RECURSION_DESIRED_FLAG);
     else
-        header.Code_And_Flag = htons(QUERY_FLAG | OPCODE_STANDARD_QUERY);
-    header.Question_Count = 1;
-    memcpy(RequestBuffer + offset, (uint8_t *)&header, sizeof(header));
-    offset += sizeof(header);
+        header->Code_And_Flag = htons(QUERY_FLAG | OPCODE_STANDARD_QUERY);
+    header->Question_Count = htons(1);
+    memcpy(RequestBuffer + offset, (u_int8_t *)header, sizeof(Header_DNS));
+    offset += sizeof(Header_DNS);
+
+    //printf("offset = %d\n", offset); //头部没有问题
+    //for (int i = 0; i < offset; i++)
+    // {
+    //    printf("%.2x |", ((unsigned char *)header)[i]);
+    //}
 
     //build question
     char *start = hostname;
@@ -149,10 +159,16 @@ int buildRequest(u_int8_t RequestBuffer[], char *hostname)
     offset += sizeof(twoByteBuffer);
     //build question ok
 
+    //printf("offset = %d\n", offset);//报文没有问题
+    //for (int i = 0; i < offset; i++)
+    //{
+    //    printf("|%d |%c|%.2x|\n", ((unsigned char *)RequestBuffer)[i], ((unsigned char *)RequestBuffer)[i], ((unsigned char *)RequestBuffer)[i]);
+    //}
+
     return offset;
 }
 
-void sendAndRecvDnsMassage(u_int8_t RequestBuffer[BUF_MAX_SIZE], int offset, u_int8_t ResponseBuffer[BUF_MAX_SIZE])
+int sendAndRecvDnsMassage(u_int8_t RequestBuffer[], int offset, u_int8_t ResponseBuffer[])
 {
     //create socket
     udp_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -169,15 +185,19 @@ void sendAndRecvDnsMassage(u_int8_t RequestBuffer[BUF_MAX_SIZE], int offset, u_i
     ser_addr.sin_addr.s_addr = inet_addr(DnsServerIP); //将ip号转化为in_addr_t
     ser_addr.sin_port = htons(DNS_PORT);               //转化为网络字节序
 
+    memset(ResponseBuffer, 0, BUF_MAX_SIZE);
     if (-1 == sendto(udp_socket, RequestBuffer, (size_t)offset, 0, (struct sockaddr *)&ser_addr, addr_len))
     {
         printf("send message error");
         exit(0);
     }
 
-    if (-1 == recvfrom(udp_socket, ResponseBuffer, BUF_MAX_SIZE, 0, (struct sockaddr *)&ser_addr, &addr_len))
+    int recvSize = recvfrom(udp_socket, ResponseBuffer, BUF_MAX_SIZE, 0, (struct sockaddr *)&ser_addr, &addr_len);
+    if (recvSize == -1)
     {
         printf("recvice message error");
         exit(0);
     }
+
+    return recvSize;
 }
