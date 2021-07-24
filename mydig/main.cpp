@@ -22,26 +22,29 @@ int main(int argc, char *argv[])
 
     parseArgv(argc, argv);
 
-    printf("a\n");
-
     u_int8_t RequestBuffer[BUF_MAX_SIZE];
     u_int8_t ResponseBuffer[BUF_MAX_SIZE];
     int offset;
 
     offset = buildRequest(RequestBuffer, hostname); // 出了点小问题
-    printf("a\n");
+
     //send to dns server and receive the massage
     int recvsize = sendAndRecvDnsMassage(RequestBuffer, offset, ResponseBuffer);
-    printf("a\n");
+
     //parse the response
+    OutPut *output;
 
+    output = parseResponse(ResponseBuffer, recvsize);
+
+    printf("hostname:%s\nIp:%s\nType:%d\nClass:%d\n", output->hostname, output->Ip, output->Type, output->Class);
+    printf("Ns:%s\n", output->NameServer[0]);
     //先打印看看
-    printf("recvsize = %d\n", recvsize);
-
-    for (int i = 0; i < recvsize; i++)
-    {
-        printf("| %c |", ((unsigned char *)ResponseBuffer)[i]);
-    }
+    //printf("\n\nrecvsize = %d\n", recvsize);
+    //for (int i = 0; i < recvsize; i++)
+    //{
+    //    printf("| %#x |", ((unsigned char *)ResponseBuffer)[i]);
+    //}
+    //printf("\n");
     return 0;
 }
 
@@ -200,4 +203,166 @@ int sendAndRecvDnsMassage(u_int8_t RequestBuffer[], int offset, u_int8_t Respons
     }
 
     return recvSize;
+}
+
+OutPut *parseResponse(u_int8_t ResponseBuffer[], int recvsize)
+{
+    //先声明返回值
+    OutPut *output = (OutPut *)malloc(sizeof(OutPut));
+    memset(output, 0, sizeof(OutPut));
+
+    Header_DNS *header = NULL;
+    header = (Header_DNS *)ResponseBuffer;
+    header->Question_Count = ntohs(header->Question_Count);
+    header->Code_And_Flag = ntohs(header->Code_And_Flag);
+    header->Answer_Record_Count = ntohs(header->Answer_Record_Count);
+    header->Authority_Record_Count = ntohs(header->Authority_Record_Count);
+    header->Addition_Record_Count = ntohs(header->Addition_Record_Count);
+
+    if (header->Code_And_Flag & RESPONSE_FLAG)
+        printf("it's a response\n");
+    if (!(header->Code_And_Flag & OPCODE_STANDARD_QUERY))
+        printf("it's a standard query\n");
+    if (header->Code_And_Flag & AUTHORITATIVE_FLAG)
+        printf("it's a authoritative answer.\n");
+    if (header->Code_And_Flag & RECURSION_DESIRED_FLAG)
+        printf("Recursion desired!\n");
+    if (header->Code_And_Flag & RESPONSE_NO_ERROR)
+    {
+        printf("reponse error!\n");
+        printf("error code: %d\n", header->Code_And_Flag & (0x07));
+        exit(0);
+    }
+    else
+    {
+        printf("it's a right response\n");
+    }
+
+    //parse the address of question
+    int offset = 0; //已读字节数
+    offset += sizeof(Header_DNS);
+    u_int8_t *start = &((u_int8_t *)ResponseBuffer)[offset];
+    int len = 0;
+    while (*start != 0)
+    {
+        if (!isalnum(*start))
+            len = *start;
+        for (int i = 0; i < len; i++)
+        {
+            start++;
+            offset++;
+            //printf("%c", *start);
+        }
+        //printf(".");
+        start++;
+        offset++;
+    }
+    offset++;
+    //printf("\noffset = %d\n", offset);
+
+    part_Query *part_query = (part_Query *)&(ResponseBuffer[offset]);
+    part_query->Type = ntohs(part_query->Type);
+    part_query->Class = ntohs(part_query->Class);
+    offset += sizeof(part_Query);
+
+    //解析 the RR
+    u_int8_t *namepr = &((u_int8_t *)ResponseBuffer)[offset];
+    if (*namepr & NAME_REDIRECTION) //c0 重定向
+    {
+        printf("Yes, Redirection!\n");
+        u_int16_t *realNamePr = (u_int16_t *)&((ResponseBuffer)[offset]);
+        *realNamePr = ntohs(*realNamePr); //唉,两字节就得从网络字节序转化为主机字节序
+        int redirection = *realNamePr & 0x3fff;
+        offset += sizeof(u_int16_t);
+
+        //打印Name
+        namepr = &((u_int8_t *)ResponseBuffer)[redirection];
+        int len_name = 0;
+        int host_pr = 0; //help sprintf
+        while (*namepr != 0)
+        {
+            if (!isalnum(*namepr))
+                len_name = *namepr;
+            for (int i = 0; i < len_name; i++)
+            {
+                namepr++;
+                redirection++;
+                sprintf(output->hostname + host_pr++, "%c", *namepr);
+            }
+            sprintf(output->hostname + host_pr++, ".");
+            namepr++;
+            redirection++;
+        }
+        output->hostname[host_pr - 1] = '\0';
+        redirection++;
+        //printf("%s", output->hostname); //ok
+    }
+    else
+    {
+        //打印Name
+        int len_name = 0;
+        int host_pr = 0; //help sprintf
+        while (*namepr != 0)
+        {
+            if (!isalnum(*namepr))
+                len_name = *namepr;
+            for (int i = 0; i < len_name; i++)
+            {
+                namepr++;
+                offset++;
+                sprintf(output->hostname + host_pr++, "%c", *namepr);
+            }
+            sprintf(output->hostname + host_pr++, ".");
+            namepr++;
+            offset++;
+        }
+        output->hostname[host_pr - 1] = '\0'; //"hustunique.com."去除最后的'.'
+        offset++;
+    }
+
+    //只读第一条记录
+    partof_Resource *RR = (partof_Resource *)&(ResponseBuffer[offset]);
+    offset += sizeof(partof_Resource) - 2; //？为什么多了两个字节，人工减去，？？这什么bug
+    RR->Type = ntohs(RR->Type);
+    RR->Class = ntohs(RR->Class);
+    RR->Time_to_Live = ntohl(RR->Time_to_Live); //4字节
+    RR->Resource_Data_Length = ntohs(RR->Resource_Data_Length);
+    //printf("%.2x | %.2x | %d | %.2x\n", RR->Type, RR->Class, RR->Time_to_Live, RR->Resource_Data_Length);ok
+
+    output->Type = RR->Type;
+    output->Class = RR->Class;
+
+    if (RR->Type == TYPE_A) //仅支持IPv4地址
+    {
+        u_int32_t *ptr = (u_int32_t *)&(ResponseBuffer[offset]);
+        offset += sizeof(u_int32_t);
+        //*ptr = ntohl(*ptr);//使用inet_ntoa 函数不需要转换字节序
+        in_addr *add_out = (in_addr *)malloc(sizeof(in_addr));
+        add_out->s_addr = *ptr;
+        strcpy(output->Ip, inet_ntoa(*add_out));
+    }
+    else if (RR->Type == TYPE_NS)
+    {
+        printf("ns\n");
+        char *namepr = (char *)&(ResponseBuffer[offset]);
+        int len_name = 0;
+        int ns_pr = 0; //help sprintf
+        while (*namepr != 0)
+        {
+            if (!isalnum(*namepr))
+                len_name = *namepr;
+            for (int i = 0; i < len_name; i++)
+            {
+                namepr++;
+                offset++;
+                sprintf(output->NameServer[0] + ns_pr++, "%c", *namepr);
+            }
+            sprintf(output->NameServer[0] + ns_pr++, ".");
+            namepr++;
+            offset++;
+        }
+        output->NameServer[0][ns_pr - 1] = '\0'; //"hustunique.com."去除最后的'.'
+        offset++;
+    }
+    return output;
 }
