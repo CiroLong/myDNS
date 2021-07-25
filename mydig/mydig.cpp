@@ -17,7 +17,7 @@ int udp_socket; //socket id
 char DefaultHostname[] = "hustunique.com\0";
 char *hostname = DefaultHostname; //查询的域名
 
-int main(int argc, char *argv[])
+OutPut *myDig(int argc, char *argv[]) //main
 {
 
     parseArgv(argc, argv);
@@ -45,7 +45,7 @@ int main(int argc, char *argv[])
     //    printf("| %#x |", ((unsigned char *)ResponseBuffer)[i]);
     //}
     //printf("\n");
-    return 0;
+    return output;
 }
 
 int parseArgv(int argc, char *argv[])
