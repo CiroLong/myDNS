@@ -133,7 +133,7 @@ int dnsHandleFunction()
         statusBadRequest(clnt_sock);
         exit(0); //暂时先return
     }
-    statusOK(clnt_sock, "ok");
+
     int i = offset;
     len = 0;
     while (buffer[offset] != ' ' && buffer[offset] != '\n' && buffer[offset] != EOF)
@@ -144,7 +144,16 @@ int dnsHandleFunction()
     offset++; //滤过空格
     memcpy(url, buffer + i, (size_t)len);
     fprintf(stdout, "url = %s\n", url);
+    //解析url， 还没时间做
+    //...
 
+    //调用mydig
+    char *argv[] = {"./mydig", "-r", "hustunique.com"};
+    OutPut *msg_mtdig = myDig(3, argv);
+    char msg[BUF_MAX_SIZE] = {0};
+    sprintf(msg, "{\"hostname\":\"%s\",\"ip\":\"%s\",}", msg_mtdig->hostname, msg_mtdig->Ip);
+
+    statusOK(clnt_sock, msg);
     //放弃headers,hh
     //关闭套接字
     close(clnt_sock);
