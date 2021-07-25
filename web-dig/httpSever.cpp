@@ -131,7 +131,7 @@ int dnsHandleFunction()
         //无效访问
         printf("Bad Request!\n");
         statusBadRequest(clnt_sock);
-        exit(0); //暂时先return
+        exit(0);
     }
 
     int i = offset;
@@ -141,20 +141,130 @@ int dnsHandleFunction()
         offset++;
         len++;
     }
-    offset++; //滤过空格
+    offset++; //滤过空格,之后本来得拿 HTTP 版本
     memcpy(url, buffer + i, (size_t)len);
     fprintf(stdout, "url = %s\n", url);
-    //解析url， 还没时间做
-    //...
 
+    //解析url， //还没时间做
+    //...
+    //路由就不管了
+    //直接拿参数
+    routerParameter *rParameter = (routerParameter *)malloc(sizeof(routerParameter));
+    memset(rParameter, 0, sizeof(rParameter));
+    //strcpy(rParameter->name, "hustunique.com\0");
+    //strcpy(rParameter->server, "192.168.1.1");
+    //strcpy(rParameter->type, "a"); //"ns"
+    rParameter->recursion = 1;
+    {
+        char key[64] = {0};
+        char value[64] = {0};
+        if (!is_valid_fname(url))
+        {
+            statusBadRequest(clnt_sock);
+            close(clnt_sock); //终于意识到要写个退出函数了，暂时先这样
+            exit(0);
+        }
+
+        char *start = strstr(url, "?");
+        char *mid = strstr(start, "=");
+        char *end = strstr(mid, "&");
+        if (start != NULL)
+        {
+            if (mid == NULL)
+            {
+                statusBadRequest(clnt_sock);
+                close(clnt_sock);
+                exit(0);
+            }
+            while (end != NULL)
+            {
+                memcpy(key, start + 1, mid - start - 1);
+                memcpy(value, mid + 1, end - mid - 1);
+                if (strcmp(key, "name") == 0)
+                {
+                    strcpy(rParameter->name, value);
+                }
+                else if (strcmp(key, "type") == 0)
+                {
+                    strcpy(rParameter->type, value);
+                }
+                else if (strcmp(key, "server") == 0)
+                {
+                    strcpy(rParameter->server, value);
+                }
+                else if (strcmp(key, "recursion") == 0)
+                {
+                    rParameter->recursion = atoi(value);
+                }
+
+                memset(key, 0, sizeof(key));
+                memset(value, 0, sizeof(value));
+                start = end;
+                mid = strstr(start, "=");
+                end = strstr(mid, "&");
+                if (mid == NULL)
+                {
+                    statusBadRequest(clnt_sock);
+                    close(clnt_sock);
+                    exit(0);
+                }
+            }
+            end = url + strlen(url);
+            memcpy(key, start + 1, mid - start - 1);
+            memcpy(value, mid + 1, end - mid - 1);
+            if (strcmp(key, "name") == 0)
+            {
+                strcpy(rParameter->name, value);
+            }
+            else if (strcmp(key, "type") == 0)
+            {
+                strcpy(rParameter->type, value);
+            }
+            else if (strcmp(key, "server") == 0)
+            {
+                strcpy(rParameter->server, value);
+            }
+            else if (strcmp(key, "recursion") == 0)
+            {
+                rParameter->recursion = atoi(value);
+            }
+
+            //debug
+            printf("name:%s\nserver:%s\n", rParameter->name, rParameter->server);
+        }
+    }
+    if (rParameter->name == NULL)
+    {
+        statusBadRequest(clnt_sock);
+        close(clnt_sock);
+        exit(0);
+    }
     //调用mydig
-    char *argv[] = {"./mydig", "-r", "hustunique.com"};
-    OutPut *msg_mtdig = myDig(3, argv);
+
+    char *argv[10] = {0};
+    int args = 0;
+    argv[args++] = "./mydig";
+    argv[args++] = rParameter->name;
+    if (rParameter->recursion == 1)
+    {
+        argv[args++] = "-r";
+    }
+    if (*(rParameter->server) != '\0')
+    {
+        argv[args++] = "-s";
+        argv[args++] = rParameter->server;
+    }
+    if (*(rParameter->type) != '\0')
+    {
+        argv[args++] = "-t";
+        argv[args++] = rParameter->type;
+    }
+    OutPut *msg_mtdig = myDig(args, argv);
     char msg[BUF_MAX_SIZE] = {0};
-    sprintf(msg, "{\"hostname\":\"%s\",\"ip\":\"%s\",}", msg_mtdig->hostname, msg_mtdig->Ip);
+    sprintf(msg, "{\"hostname\":\"%s\",\"ip\":\"%s\",\"nameserver\":\"%s\",}", msg_mtdig->hostname, msg_mtdig->Ip, msg_mtdig->NameServer);
 
     statusOK(clnt_sock, msg);
-    //放弃headers,hh
+    //放弃headers,得写个函数解析，呜呜
     //关闭套接字
     close(clnt_sock);
     exit(0);
