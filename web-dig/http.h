@@ -34,3 +34,6 @@ typedef struct routerParameter
 int statusOK(int clntsock, char *body);
 int statusBadRequest(int clnt_sock);
 int write_socket(int fd, char *msg, int size);
+int read_socket(int fd, char *buffer, int size);
+int is_valid_fname(char *fname);
+int dnsHandleFunction();
